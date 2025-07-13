@@ -12,7 +12,7 @@ spec:
         app: mktxp-exporter
     spec:
       securityContext:
-        fsGroup: 0
+        fsGroup: 100
       containers:
       - name: mktxp-exporter
         image: ghcr.io/akpw/mktxp:latest

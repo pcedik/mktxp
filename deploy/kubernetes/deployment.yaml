@@ -23,14 +23,14 @@ spec:
             memory: "512Mi"
             cpu: "500m"
         volumeMounts:
-          - name: mktxp-credentials
+          - name: mktxp-storage
             mountPath: /mktxp_config
         ports:
         - containerPort: 49090
       volumes:
-        - name: mktxp-credentials
-          secret:
-            secretName: mktxp-credentials
+      - name: mktxp-storage
+        persistentVolumeClaim:
+          claimName: mktxp-pvc
 ---
 apiVersion: v1
 kind: Service

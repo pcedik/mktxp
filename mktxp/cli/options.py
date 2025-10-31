@@ -149,6 +149,19 @@ Selected metrics info can be printed on the command line. For more information, 
                 help = "IP connections stats",
                 action = 'store_true')
 
+        optional_args_group.add_argument('-kc', '--kid_control', dest='kid_control',
+                help = "Kid Control device metrics",
+                action = 'store_true')
+
+        optional_args_group.add_argument('-al', '--address_lists', dest='address_lists',
+                help = "Address List metrics (comma-separated list names)",
+                type = str,
+                metavar = 'LISTS')
+
+        optional_args_group.add_argument('-nw', '--netwatch', dest='netwatch',
+                help = "Netwatch metrics",
+                action = 'store_true')
+
 
     # Options checking
     def _check_args(self, args, parser):

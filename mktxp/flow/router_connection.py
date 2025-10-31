@@ -28,7 +28,14 @@ import yaml
 
 MIKROTIK_ENCODING = 'latin-1'
 import routeros_api.api_structure
-routeros_api.api_structure.StringField.get_python_value = lambda _, bytes:  bytes.decode(MIKROTIK_ENCODING) 
+
+def _decode_bytes(bytes_to_decode):
+    try:
+        return bytes_to_decode.decode('utf-8')
+    except UnicodeDecodeError:
+        return bytes_to_decode.decode(MIKROTIK_ENCODING)
+
+routeros_api.api_structure.StringField.get_python_value = lambda _, bytes:  _decode_bytes(bytes)
 routeros_api.api_structure.default_structure = collections.defaultdict(routeros_api.api_structure.StringField)
 
 from routeros_api import RouterOsApiPool
@@ -55,12 +62,18 @@ class RouterAPIConnection:
         
         ctx = None
         if self.config_entry.use_ssl:
-            ctx = ssl.create_default_context(cafile=self.config_entry.ssl_ca_file if self.config_entry.ssl_ca_file else None)
+            ctx = ssl.create_default_context(
+                cafile=self.config_entry.ssl_ca_file if self.config_entry.ssl_ca_file else None
+            )
             if self.config_entry.no_ssl_certificate:
                 ctx.check_hostname = False
+                ctx.set_ciphers('ADH:@SECLEVEL=0')
+            elif not self.config_entry.ssl_certificate_verify:
+                ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
-            elif self.config_entry.ssl_ca_file:
-                ctx.load_verify_locations(self.config_entry.ssl_ca_file)
+            else:
+                ctx.check_hostname = self.config_entry.ssl_check_hostname
+                ctx.verify_mode = ssl.CERT_REQUIRED
 
         username = self.config_entry.username
         password = self.config_entry.password
@@ -82,8 +95,6 @@ class RouterAPIConnection:
                 password = password,
                 port = self.config_entry.port,
                 plaintext_login = True,
-                use_ssl = self.config_entry.use_ssl,
-                ssl_verify = self.config_entry.ssl_certificate_verify,
                 ssl_context = ctx)
         
         self.connection.socket_timeout = config_handler.system_entry.socket_timeout
@@ -100,12 +111,19 @@ class RouterAPIConnection:
             return
         try:
             print(f'Connecting to router {self.router_name}@{self.config_entry.hostname}')
+            if self.config_entry.use_ssl and self.config_entry.no_ssl_certificate:
+                print(f'Warning: API_SSL connect without router SSL certificate is insecure and should not be used in production environments!')
             self.connection.plaintext_login = self.config_entry.plaintext_login
             self.api = self.connection.get_api()
             self._set_connect_state(success = True, connect_time = connect_time)
         except (socket.error, socket.timeout, Exception) as exc:
             self._set_connect_state(success = False, connect_time = connect_time, exc = exc)
             raise RouterAPIConnectionError(f'Failed attemp to establish network connection to router: {self.router_name}@{self.config_entry.hostname}')
+
+    def disconnect(self):
+        if self.is_connected():
+            self.connection.disconnect()
+            self.api = None
 
     @check_connected
     def router_api(self):

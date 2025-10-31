@@ -9,7 +9,7 @@
 MKTXP is a Prometheus Exporter for Mikrotik RouterOS devices.\
 It gathers and exports a rich set of metrics across multiple routers, all easily configurable via built-in CLI interface. 
 
-While simple to use, MKTXP supports [advanced features](https://github.com/akpw/mktxp#advanced-features) such as automatic IP address resolution with both local & remote DHCP servers, concurrent exports across multiple router devices, configurable data processing & transformations, optional bandwidth testing, etc.
+While simple to use, MKTXP supports [advanced features](https://github.com/akpw/mktxp#advanced-features) such as automatic IP address resolution with both local & remote DHCP servers, concurrent exports across multiple router devices, configurable data processing & transformations, injectable custom labels for easy device grouping, optional bandwidth testing, etc.
 
 Apart from exporting to Prometheus, MKTXP can print selected metrics directly on the command line (see examples below). 
 
@@ -55,6 +55,7 @@ The default configuration file comes with a sample configuration, making it easy
 [Sample-Router-1]
     # for specific configuration on the router level, overload the defaults here
     hostname = 192.168.88.1
+    custom_labels = dc:london, rack=a1, service:prod
 
 [Sample-Router-2]
     # for specific configuration on the router level, overload the defaults here
@@ -71,9 +72,13 @@ The default configuration file comes with a sample configuration, making it easy
     password = password
     credentials_file = ""   # To use an external file in YAML format for both username and password, specify the path here
     
+    custom_labels = None    # Custom labels to be injected to all device metrics, comma-separated key:value (or key=value) pairs    
+                            # Example: 'dc:london, rack=a1, service:prod' (quotation marks are optional)
+
     use_ssl = False                 # enables connection via API-SSL servis
     no_ssl_certificate = False      # enables API_SSL connect without router SSL certificate
-    ssl_certificate_verify = False  # turns SSL certificate verification on / off   
+    ssl_certificate_verify = False  # turns SSL certificate verification on / off
+    ssl_check_hostname = True       # check if the hostname matches the peer cert’s hostname
     ssl_ca_file = ""                # path to the certificate authority file to validate against, leave empty to use system store
     plaintext_login = True          # for legacy RouterOS versions below 6.43 use False
 
@@ -91,12 +96,14 @@ The default configuration file comes with a sample configuration, making it easy
     pool = True                     # IPv4 Pool metrics
     firewall = True                 # IPv4 Firewall rules traffic metrics
     neighbor = True                 # IPv4 Reachable Neighbors
+    address_list = None             # Firewall Address List metrics, a comma-separated list of names
     dns = False                     # DNS stats
 
     ipv6_route = False              # IPv6 Routes metrics    
     ipv6_pool = False               # IPv6 Pool metrics
     ipv6_firewall = False           # IPv6 Firewall rules traffic metrics
     ipv6_neighbor = False           # IPv6 Reachable Neighbors
+    ipv6_address_list = None        # IPv6 Firewall Address List metrics, a comma-separated list of names
 
     poe = True                      # POE metrics
     monitor = True                  # Interface monitor metrics
@@ -106,6 +113,7 @@ The default configuration file comes with a sample configuration, making it easy
     wireless_clients = True         # WLAN clients metrics
     capsman = True                  # CAPsMAN general metrics
     capsman_clients = True          # CAPsMAN clients metrics
+    w60g = False                    # W60G metrics
 
     eoip = False                    # EoIP status metrics
     gre = False                     # GRE status metrics
@@ -124,6 +132,8 @@ The default configuration file comes with a sample configuration, making it easy
     bgp = False                     # BGP sessions metrics
     routing_stats = False           # Routing process stats
     certificate = False             # Certificates metrics
+
+    container = False               # Containers metrics
     
     remote_dhcp_entry = None        # An MKTXP entry to provide for remote DHCP info / resolution
     remote_capsman_entry = None     # An MKTXP entry to provide for remote capsman info 
@@ -265,7 +275,10 @@ mktxp edit -i
     max_scrape_duration = 10            # Max duration of individual routers' metrics collection (parallel fetch only)
     total_max_scrape_duration = 30      # Max overall duration of all metrics collection (parallel fetch only)
 
-    compact_default_conf_values = False # Compact mktxp.conf, so only specific values are kept on the individual routers' level    
+    persistent_router_connection_pool = True  # Use a persistent router connections pool between scrapes
+    persistent_dhcp_cache = True              # Persist DHCP cache between metric collections
+    compact_default_conf_values = False       # Compact mktxp.conf, so only specific values are kept on the individual routers' level    
+    prometheus_headers_deduplication = False  # Deduplicate Prometheus HELP / TYPE headers in the metrics output 
 ```    
 <sup>💡</sup> *When changing the default mktxp port for [docker image installs](https://github.com/akpw/mktxp#docker-image-install), you'll need to adjust the `docker run ... -p 49090:49090 ...` command to reflect the new port*
 
@@ -280,7 +293,7 @@ Now with your RouterOS metrics being exported to Prometheus, it's easy to visual
         .. edit     Open MKTXP configuration file in your editor of choice        
         .. print    Displays selected metrics on the command line
         .. export   Starts collecting metrics for all enabled RouterOS configuration entries
-        .. show   	Shows MKTXP configuration entries on the command line
+        .. show     Shows MKTXP configuration entries on the command line
 
 ````
 ❯ mktxp -h
@@ -338,6 +351,72 @@ Similar to remote DHCP resolution, mktxp allows collecting CAPsMAN-related metri
     remote_capsman_entry = RouterA  # Will collect the CAPsMAN-related info via router A
 ```
 
+### Kid Control device monitoring
+MKTXP Kid Control metrics help track network activity and bandwidth usage for all connected devices on a RouterOS network. This makes it easy to identify high-traffic devices and monitor network usage patterns in real-time.
+
+The Kid Control functionality offers two modes of operation:
+```
+kid_control_assigned = False    # Allow Kid Control metrics for connected devices with assigned users
+kid_control_dynamic = False     # Allow Kid Control metrics for all connected devices, including those without assigned user
+```
+
+When set up on the router, is is possible to view Kid Control device metrics directly from the command line:
+```
+❯ mktxp print -en MKT-GT -kc
+MKT-GT@10.70.0.1: OK to connect
+Connecting to router MKT-GT@10.70.0.1
+2025-09-24 12:08:42 Connection to router MKT-GT@10.70.0.1 has been established
++-------------------+-------------------+---------------+----------------+-------------------+------------------+---------+-----------+------------+
+|     dhcp_name     |       name        |     user      |  dhcp_address  |    mac_address    |    ip_address    | rate_up | rate_down | idle_time  |
++===================+===================+===============+================+===================+==================+=========+===========+============+
+| MacBook Pro       |    MacBookPro     | alice         |   10.10.0.15   | A1:B2:C3:D4:E5:F6 |   10.10.0.15     | 2 Mbps  |  15 Mbps  |  a second  |
+| Smart TV          |   Samsung TV      |               |   10.20.0.45   | C1:D2:E3:F4:A5:B6 |   10.20.0.45     | 1 Mbps  |  8 Mbps   | 10 seconds |
+| iPhone 15         |     iPhone        | alice         |   10.10.0.22   | A2:B3:C4:D5:E6:F7 |   10.10.0.22     | 512 Kbps|  3 Mbps   |  2 seconds |
+| Galaxy Tab        |  Samsung Galaxy   | bob           |   10.10.0.28   | B1:C2:D3:E4:F5:A6 |   10.10.0.28     | 256 Kbps|  1 Mbps   |  5 seconds |
+| Kitchen Display   |   Google Nest     |               |   10.20.0.52   | D1:E2:F3:A4:B5:C6 |   10.20.0.52     | 128 Kbps|  512 Kbps | 30 seconds |
+| Ring Doorbell     |   Ring Camera     |               |   10.20.0.67   | E1:F2:A3:B4:C5:D6 |   10.20.0.67     | 64 Kbps |  256 Kbps |  a minute  |
+| Smart Thermostat  |      Nest         |               |   10.20.0.73   | F1:A2:B3:C4:D5:E6 |   10.20.0.73     | 32 Kbps |  64 Kbps  |  2 minutes |
+| Alexa Echo        |   Amazon Echo     |               |   10.20.0.81   | A3:B4:C5:D6:E7:F8 |   10.20.0.81     |  0 bps  |   0 bps   |  5 minutes |
++-------------------+-------------------+---------------+----------------+-------------------+------------------+---------+-----------+------------+
+alice devices: 2
+bob devices: 1
+User-assigned devices: 3
+Dynamic devices (no user): 5
+Total Kid Control devices: 8
+```
+The devices are automatically sorted by total bandwidth usage (upload + download rates), making it easy to identify high-traffic devices at a glance.
+
+### Address List device monitoring
+Similarly to the above, MKTXP IPv4 / IPv6 firewall address lists can be inspected directly from the command line. The feature supports multiple address lists and automatically detects which IP versions contain which entries.
+
+```
+❯ mktxp print -en MKT-GT -al "blocklist, allowlist"
+MKT-GT@10.70.0.1: OK to connect
+Connecting to router MKT-GT@10.70.0.1
+2025-09-25 12:15:30 Connection to router MKT-GT@10.70.0.1 has been established
+
+Address Lists (IPv4):
++----------+---------------+------------------+---------+---------+----------+
+|   list   |    address    |     comment      | timeout | dynamic | disabled |
++==========+===============+==================+=========+=========+==========+
+| blocklist| 192.168.1.100 | Suspicious host  |         |   No    |   No     |
+| blocklist| 10.0.0.5      | Auto-blocked     | 2h      |   Yes   |   No     |
+| allowlist| 192.168.1.10  | Admin workstation|         |   No    |   No     |
++----------+---------------+------------------+---------+---------+----------+
+Total entries: 3
+Unique lists: 2
+
+Address Lists (IPv6):
++----------+----------------+------------------+---------+---------+----------+
+|   list   |    address     |     comment      | timeout | dynamic | disabled |
++==========+================+==================+=========+=========+==========+
+| blocklist| 2001:db8::bad  | IPv6 bad actor   |         |   No    |   No     |
++----------+----------------+------------------+---------+---------+----------+
+Total entries: 1
+Unique lists: 1
+```
+The command automatically queries both IPv4 and IPv6 address lists, displaying separate tables when entries exist in both IP versions. Missing lists are reported as warnings, and entries are sorted by list name and then by address for easy scanning.
+
 ### Connections stats
 With many connected devices everywhere, one can often only guess where do they go to and what they actually do with all the information from your network environment. MKTXP let's you easily track those with a single option, with results available both from [mktxp dashboard](https://grafana.com/grafana/dashboards/13679-mikrotik-mktxp-exporter/) and the command line:
 
@@ -372,6 +451,9 @@ total_max_scrape_duration = 30      # Max overall duration of all metrics collec
 ```
 To keeps things within expected boundaries, the last two parameters allows for controlling both individual and overall scrape durations
 
+
+### Injectable router-level custom labels
+You can add custom labels to your devices using the `custom_labels` option. These labels are attached to all the metrics for a specific device, allowing e.g. easy router grouping for detailed overview dashboards in Grafana. You can define default labels in the `[default]` section and override or extend them in the router-specific sections.
 
 ### mktxp endpoint listen addresses
 By default, mktxp runs it's HTTP metrics endpoint on any IPv4 address on port 49090. However, it is also able to listen on multiple socket addresses, both IPv4 and IPv6. 
@@ -481,5 +563,5 @@ mktxp is running as pid 36704
 
 
 **Running Tests**
-- TDB
-- Run via: `$ python setup.py test`
+- To run the test suite, first install the development dependencies: `pip install -e .[test]`
+- Then run the tests using `tox`: `$ tox`

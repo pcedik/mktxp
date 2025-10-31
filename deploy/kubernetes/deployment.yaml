@@ -23,7 +23,7 @@ spec:
         resources:
           limits:
             memory: "512Mi"
-            cpu: "500m"
+            cpu: "2"
         volumeMounts:
           - name: mktxp-storage
             mountPath: /mktxp_config

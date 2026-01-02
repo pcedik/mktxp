@@ -138,7 +138,10 @@ The default configuration file comes with a sample configuration, making it easy
     remote_dhcp_entry = None        # An MKTXP entry to provide for remote DHCP info / resolution
     remote_capsman_entry = None     # An MKTXP entry to provide for remote capsman info 
 
-    use_comments_over_names = True  # when available, forces using comments over the interfaces names
+    interface_name_format = name    # Format to use for interface / resource names, allowed values: 'name', 'comment', or 'combined'
+                                        # 'name': use interface name only (e.g. 'ether1')
+                                        # 'comment': use comment if available, fallback to name if not
+                                        # 'combined': use both (e.g. 'ether1 (Office Switch)')
     check_for_updates = False       # check for available ROS updates
 ```
 
@@ -162,14 +165,48 @@ Obviously, you can do the same via just opening the config file directly:
 ```
 
 #### Docker image install
-For Docker instances, one way is to use a configured `mktxp.conf` file from a local installation. Alternatively you can create a standalone one in a dedicated folder:
+The MKTXP Docker image runs as UID 1000 (standard user ID on most Linux distributions) to simplify file permissions when bind-mounting configuration files.
+
+<sup>💡</sup> *Docker images are available at https://github.com/akpw/mktxp/pkgs/container/mktxp. Use `:main` for the latest features or `:latest` for the most recent stable release.*
+
+For Docker instances, you have several options for managing configuration:
+
+**Option 1: Using `/etc/mktxp` (Recommended)**
+```bash
+# Create config directory and files
+mkdir mktxp-config
+nano mktxp-config/mktxp.conf     # copy&edit sample entry(ies) from above
+nano mktxp-config/_mktxp.conf    # optional: system configuration
+
+# Run with dedicated config directory
+docker run -v "$(pwd)/mktxp-config:/etc/mktxp" -p 49090:49090 -it --rm \
+  ghcr.io/akpw/mktxp:main mktxp --cfg-dir /etc/mktxp export
 ```
+
+**Option 2: Mount individual files**
+```bash
+# Create config files
+nano mktxp.conf  # copy&edit sample entry(ies) from above
+
+# Mount only the config file (internal _mktxp.conf will be auto-created)
+docker run -v "$(pwd)/mktxp.conf:/etc/mktxp/mktxp.conf" -p 49090:49090 -it --rm \
+  ghcr.io/akpw/mktxp:main mktxp --cfg-dir /etc/mktxp export
+```
+
+**Option 3: Legacy home directory method (backward compatible)**
+```bash
 mkdir mktxp
-nano mktxp/mktxp.conf # copy&edit sample entry(ies) from above
+nano mktxp/mktxp.conf  # copy&edit sample entry(ies) from above
+
+# Traditional mounting to home directory
+docker run -v "$(pwd)/mktxp:/home/mktxp/mktxp/" -p 49090:49090 -it --rm \
+  ghcr.io/akpw/mktxp:main
 ```
-Now you can mount this folder and run your docker instance with:
-```
-docker run -v "$(pwd)/mktxp:/home/mktxp/mktxp/" -p 49090:49090 -it --rm ghcr.io/akpw/mktxp:latest
+
+**Getting shell access for debugging:**
+```bash
+# Easy shell access (no --entrypoint needed)
+docker run -v "$(pwd)/mktxp-config:/etc/mktxp" -it --rm ghcr.io/akpw/mktxp:main sh
 ```
 
 #### MKTXP stack install
@@ -264,9 +301,10 @@ mktxp edit -i
     max_delay_on_failure = 900
     delay_inc_div = 5
 
-    bandwidth = False               # Turns metrics bandwidth metrics collection on / off    
-    bandwidth_test_interval = 600   # Interval for collecting bandwidth metrics
-    minimal_collect_interval = 5    # Minimal metric collection interval
+    bandwidth = False                   # Turns metrics bandwidth metrics collection on / off
+    bandwidth_test_dns_server = 8.8.8.8 # The DNS server to be used for the bandwidth test connectivity check
+    bandwidth_test_interval = 600       # Interval for collecting bandwidth metrics
+    minimal_collect_interval = 5        # Minimal metric collection interval
 
     verbose_mode = False            # Set it on for troubleshooting
 

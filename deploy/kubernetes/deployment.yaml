@@ -18,6 +18,16 @@ spec:
         labelSelector:
           matchLabels:
             app: mktxp-exporter
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: ram-tier
+                operator: In
+                values:
+                - high
       securityContext:
         fsGroup: 100
       containers:

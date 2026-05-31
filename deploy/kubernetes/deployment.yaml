@@ -11,6 +11,13 @@ spec:
       labels:
         app: mktxp-exporter
     spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: mktxp-exporter
       securityContext:
         fsGroup: 100
       containers:
